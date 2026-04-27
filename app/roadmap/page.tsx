@@ -3,6 +3,7 @@
 import { Sidebar } from '@/components/sidebar'
 import { CheckCircle } from 'lucide-react'
 import { useEffect } from 'react'
+import Link from 'next/link'
 
 const ROADMAP = [
   {

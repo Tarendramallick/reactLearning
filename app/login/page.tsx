@@ -35,7 +35,7 @@ export default function LoginPage() {
 
       const data = await response.json();
       setUser(data.user);
-      router.push('/');
+      router.push('/courses');
     } catch (error) {
       setError('An error occurred. Please try again.');
     } finally {

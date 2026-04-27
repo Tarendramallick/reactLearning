@@ -48,6 +48,18 @@ export function Navbar() {
                 >
                   Courses
                 </Link>
+                <Link
+                  href="/roadmap"
+                  className="text-slate-300 hover:text-white transition"
+                >
+                  Roadmap
+                </Link>
+                <Link
+                  href="/tracker"
+                  className="text-slate-300 hover:text-white transition"
+                >
+                  Tracker
+                </Link>
                 <span className="text-slate-400 text-sm">{user.name}</span>
               </div>
 

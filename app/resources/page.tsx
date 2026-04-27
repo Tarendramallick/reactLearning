@@ -1,7 +1,8 @@
 'use client'
 
-import { Sidebar } from '@/components/sidebar'
-import { useEffect } from 'react'
+import { useAuthStore } from '@/store/authStore'
+import { Navbar } from '@/components/Navbar'
+import { useRouter } from 'next/navigation'
 import { ExternalLink } from 'lucide-react'
 
 const RESOURCES = [
@@ -40,20 +41,16 @@ const RESOURCES = [
 ]
 
 export default function ResourcesPage() {
-  useEffect(() => {
-    const user = localStorage.getItem('user')
-    if (!user) {
-      window.location.href = '/'
-    }
-  }, [])
+  const { isAuthenticated } = useAuthStore()
+  const router = useRouter()
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-white">
-      <Sidebar />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      <Navbar />
       
-      <main className="flex-1 md:ml-64">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
-      <header className="border-b border-slate-800 py-12 px-4 sm:px-6 lg:px-8">
+      <header className="mb-12 pt-4">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-4xl font-bold mb-2">Resources</h1>
           <p className="text-slate-400">Curated learning resources and tools for React development</p>
@@ -95,3 +92,4 @@ export default function ResourcesPage() {
     </div>
   )
 }
+

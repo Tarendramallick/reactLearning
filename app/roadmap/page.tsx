@@ -1,14 +1,17 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from 'react';
+import { useAuthStore } from '@/store/authStore';
+import { useProgressStore } from '@/store/progressStore';
+import { Navbar } from '@/components/Navbar';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, Code2, Puzzle, Share2, Layers, Zap,
   GitBranch, List, LayoutList, Rocket, Route,
   FileText, Database, Globe, Gauge, Hook,
   FolderOpen, ChevronDown, ChevronUp, Lock, Check,
   Trophy, ArrowRight, Clock, Play,
-} from "lucide-react";
+} from 'lucide-react';
 
 /* ─────────────────────────────────────────────
    DATA
@@ -209,16 +212,50 @@ function Spinner({ color }: { color: string }) {
    PAGE
 ═══════════════════════════════════════════ */
 export default function RoadmapPage() {
-  const [activeId, setActiveId] = useState(4);
+  const { isAuthenticated } = useAuthStore();
+  const { lessons } = useProgressStore();
+  const [activeId, setActiveId] = useState(1);
   const [showAll, setShowAll] = useState(false);
-  const visibleModules = showAll ? modules : modules.slice(0, 10);
+  const [loading, setLoading] = useState(true);
 
-  const totalDone = modules.reduce((a, m) => a + m.done, 0);
-  const totalLessons = modules.reduce((a, m) => a + m.total, 0);
-  const pct = Math.round((totalDone / totalLessons) * 100);
+  useEffect(() => {
+    const fetchProgress = async () => {
+      try {
+        const res = await fetch('/api/progress');
+        if (res.ok) {
+          const data = await res.json();
+          useProgressStore.getState().loadProgress(data.progress || [], data.quizAttempts || []);
+        }
+      } catch (error) {
+        console.error('Error fetching progress:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProgress();
+  }, []);
+
+  // Calculate progress for each module based on lessons
+  const modulesWithProgress = modules.map((mod) => {
+    const moduleQuizzes = Object.values(lessons).filter(
+      (l) => l.lessonId.includes(mod.id.toString())
+    );
+    const completedQuizzes = moduleQuizzes.filter((l) => l.completed).length;
+    return {
+      ...mod,
+      done: completedQuizzes,
+      status: completedQuizzes === 0 ? 'locked' : completedQuizzes === mod.total ? 'completed' : 'progress',
+    };
+  });
+
+  const visibleModules = showAll ? modulesWithProgress : modulesWithProgress.slice(0, 10);
+  const totalDone = modulesWithProgress.reduce((a, m) => a + m.done, 0);
+  const totalLessons = modulesWithProgress.reduce((a, m) => a + m.total, 0);
+  const pct = totalLessons > 0 ? Math.round((totalDone / totalLessons) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-[#050a18] text-white flex flex-col" style={{ fontFamily: "'Manrope', sans-serif" }}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white flex flex-col" style={{ fontFamily: "'Manrope', sans-serif" }}>
+      <Navbar />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -226,68 +263,10 @@ export default function RoadmapPage() {
         ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 4px; }
       `}</style>
 
-      <div className="flex flex-1 overflow-hidden" style={{ height: "100vh" }}>
-
-        {/* ══ SIDEBAR ══════════════════════════════════════════ */}
-        <aside className="w-[230px] flex-shrink-0 bg-[#080f1e] border-r border-white/[0.07] flex flex-col overflow-y-auto">
-
-          {/* Progress Ring */}
-          <div className="p-5 border-b border-white/[0.07]">
-            <p className="text-gray-400 text-[11px] font-bold tracking-widest uppercase mb-4">Your Progress</p>
-            <div className="flex flex-col items-center">
-              <ProgressRing pct={pct} />
-              <p className="text-gray-400 text-sm mt-2">Overall Progress</p>
-            </div>
-          </div>
-
-          {/* Sections list */}
-          <div className="p-4 flex-1">
-            <p className="text-gray-500 text-[10px] font-bold tracking-widest uppercase mb-3">Sections</p>
-            <div className="flex flex-col gap-0.5">
-              {modules.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => setActiveId(m.id)}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all text-[13px] font-semibold w-full
-                    ${activeId === m.id
-                      ? "bg-[#1a2a4a] text-white border border-blue-500/30"
-                      : "text-gray-400 hover:text-white hover:bg-white/5"
-                    }`}
-                >
-                  <span className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
-                    {m.icon
-                      ? sidebarIcons[m.icon]
-                      : <span style={{ fontSize: 11, fontWeight: 800, color: m.iconText ?? "#000", background: m.iconBg, borderRadius: 4, padding: "1px 3px" }}>{m.iconLabel}</span>
-                    }
-                  </span>
-                  <span className="truncate">{m.id}. {m.title}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Streak */}
-          <div className="p-4 border-t border-white/[0.07]">
-            <div className="bg-[#120f05] border border-amber-500/20 rounded-xl p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xl">🔥</span>
-                <p className="text-amber-400 font-bold text-sm">7 Day Streak</p>
-              </div>
-              <p className="text-gray-400 text-xs">Keep it up! Consistency is the key.</p>
-              <div className="flex gap-1.5 mt-2">
-                {["✓","✓","W","T","F","S","S"].map((d, i) => (
-                  <div key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold
-                    ${i < 2 ? "bg-blue-600 text-white" : i === 2 ? "bg-amber-500 text-black" : "bg-[#1e2a3a] text-gray-500"}`}>
-                    {i < 2 ? "✓" : d}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </aside>
+      <div className="flex flex-1 overflow-hidden" style={{ minHeight: "calc(100vh - 65px)" }}>
 
         {/* ══ MAIN ═════════════════════════════════════════════ */}
-        <main className="flex-1 overflow-y-auto px-8 py-8">
+        <main className="flex-1 overflow-y-auto px-8 py-8 w-full">
 
           {/* HEADER */}
           <div className="flex items-start justify-between mb-6">

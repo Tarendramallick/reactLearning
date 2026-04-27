@@ -1,7 +1,8 @@
 'use client'
 
-import { Sidebar } from '@/components/sidebar'
-import { useEffect } from 'react'
+import { useAuthStore } from '@/store/authStore'
+import { Navbar } from '@/components/Navbar'
+import { useRouter } from 'next/navigation'
 import { Code2, GitBranch, Users } from 'lucide-react'
 
 const PROJECTS = [
@@ -56,18 +57,14 @@ const PROJECTS = [
 ]
 
 export default function ProjectsPage() {
-  useEffect(() => {
-    const user = localStorage.getItem('user')
-    if (!user) {
-      window.location.href = '/'
-    }
-  }, [])
+  const { isAuthenticated } = useAuthStore()
+  const router = useRouter()
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-white">
-      <Sidebar />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      <Navbar />
       
-      <main className="flex-1 md:ml-64">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
       <header className="border-b border-slate-800 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">

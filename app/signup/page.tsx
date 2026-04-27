@@ -2,16 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { useAuthStore } from '@/store/authStore';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function SignupPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const setUser = useAuthStore((state) => state.setUser);
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,117 +26,119 @@ export default function SignupPage() {
       return;
     }
 
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/register', {
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, password }),
+        body: JSON.stringify({ name, email, password }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || 'Signup failed');
+        return;
       }
 
-      const data = await res.json();
-      localStorage.setItem('user', JSON.stringify(data.user));
-      localStorage.setItem('token', data.token);
-
-      router.push('/home');
-    } catch (err: any) {
-      setError(err.message);
+      const data = await response.json();
+      setUser(data.user);
+      router.push('/');
+    } catch (error) {
+      setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/50 backdrop-blur p-8">
-          <div className="flex justify-center mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
-              R
-            </div>
-          </div>
-
-          <h1 className="text-2xl font-bold text-center text-white mb-2">ReactMastery</h1>
-          <p className="text-center text-slate-400 mb-8">Start your React journey today</p>
-
-          {error && (
-            <div className="mb-4 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-              {error}
-            </div>
-          )}
-
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 px-4">
+      <Card className="w-full max-w-md bg-slate-800 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white text-2xl text-center">Create Account</CardTitle>
+        </CardHeader>
+        <CardContent>
           <form onSubmit={handleSignup} className="space-y-4">
+            {error && (
+              <div className="bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-2 rounded">
+                {error}
+              </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Full Name</label>
-              <input
+              <label className="text-slate-300 block mb-2">Full Name</label>
+              <Input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20"
                 placeholder="John Doe"
+                required
+                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
-              <input
+              <label className="text-slate-300 block mb-2">Email</label>
+              <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
                 required
-                className="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20"
-                placeholder="your@email.com"
+                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
-              <input
+              <label className="text-slate-300 block mb-2">Password</label>
+              <Input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 6 characters"
                 required
-                className="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20"
-                placeholder="••••••••"
+                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Confirm Password</label>
-              <input
+              <label className="text-slate-300 block mb-2">Confirm Password</label>
+              <Input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm password"
                 required
-                className="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20"
-                placeholder="••••••••"
+                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
               />
             </div>
 
-            <button
+            <Button
               type="submit"
               disabled={loading}
-              className="w-full py-2 px-4 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity mt-6"
+              className="w-full"
             >
-              {loading ? 'Creating account...' : 'Create Account'}
-            </button>
-          </form>
+              {loading ? 'Creating account...' : 'Sign Up'}
+            </Button>
 
-          <p className="text-center text-slate-400 text-sm mt-6">
-            Already have an account?{' '}
-            <Link href="/login" className="text-cyan-400 hover:text-cyan-300">
-              Sign in
-            </Link>
-          </p>
-        </div>
-      </div>
+            <p className="text-center text-slate-400">
+              Already have an account?{' '}
+              <button
+                type="button"
+                onClick={() => router.push('/login')}
+                className="text-purple-400 hover:text-purple-300"
+              >
+                Login
+              </button>
+            </p>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

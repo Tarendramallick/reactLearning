@@ -1,26 +1,91 @@
-import { login } from '@/lib/auth';
-import { NextRequest, NextResponse } from 'next/server';
+import { MongoClient } from 'mongodb';
+import bcryptjs from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { cookies } from 'next/headers';
 
-export async function POST(req: NextRequest) {
+const MONGODB_URI = process.env.MONGODB_URI!;
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+export async function POST(request: Request) {
+  if (!MONGODB_URI) {
+    return Response.json(
+      { error: 'MongoDB URI not configured' },
+      { status: 500 }
+    );
+  }
+
   try {
-    const { email, password } = await req.json();
+    const { email, password } = await request.json();
 
+    // Validation
     if (!email || !password) {
-      return NextResponse.json({ error: 'Missing credentials' }, { status: 400 });
+      return Response.json(
+        { error: 'Email and password are required' },
+        { status: 400 }
+      );
     }
 
-    const { user, token } = await login(email, password);
+    const client = new MongoClient(MONGODB_URI);
+    await client.connect();
 
-    const response = NextResponse.json({ user, token }, { status: 200 });
-    response.cookies.set('auth_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60,
-    });
+    try {
+      const db = client.db('react-learning');
+      const usersCollection = db.collection('users');
 
-    return response;
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 401 });
+      // Find user
+      const user = await usersCollection.findOne({ email });
+      if (!user) {
+        return Response.json(
+          { error: 'Invalid email or password' },
+          { status: 401 }
+        );
+      }
+
+      // Check password
+      const passwordMatch = await bcryptjs.compare(password, user.password);
+      if (!passwordMatch) {
+        return Response.json(
+          { error: 'Invalid email or password' },
+          { status: 401 }
+        );
+      }
+
+      // Generate JWT token
+      const token = jwt.sign(
+        { userId: user._id.toString(), email: user.email },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      // Set cookie
+      const cookieStore = await cookies();
+      cookieStore.set('auth-token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60, // 7 days
+      });
+
+      return Response.json(
+        {
+          success: true,
+          user: {
+            id: user._id.toString(),
+            email: user.email,
+            name: user.name,
+          },
+          token,
+        },
+        { status: 200 }
+      );
+    } finally {
+      await client.close();
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    return Response.json(
+      { error: 'Login failed. Please try again.' },
+      { status: 500 }
+    );
   }
 }

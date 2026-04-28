@@ -143,7 +143,8 @@ export default function RoadmapCTA() {
               From JavaScript fundamentals to advanced state management,
               we've got you covered at every step.
             </p>
-            <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-white/20 hover:bg-white/10 transition text-sm font-semibold">
+            <button onClick={() => router.push("/roadmap")}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-white/20 hover:bg-white/10 transition text-sm font-semibold">
               Explore Roadmap <ArrowRight size={14} />
             </button>
           </div>

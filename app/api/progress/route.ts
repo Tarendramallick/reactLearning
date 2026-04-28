@@ -1,136 +1,244 @@
-import { MongoClient, ObjectId } from 'mongodb';
-import jwt from 'jsonwebtoken';
-import { cookies } from 'next/headers';
+import { MongoClient } from 'mongodb'
+import jwt from 'jsonwebtoken'
+import { cookies } from 'next/headers'
 
-const MONGODB_URI = process.env.MONGODB_URI!;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+// ─────────────────────────────────────────────
+// ENV
+// ─────────────────────────────────────────────
+const MONGODB_URI = process.env.MONGODB_URI!
+const JWT_SECRET =
+  process.env.JWT_SECRET || 'your-secret-key-change-in-production'
 
+// ─────────────────────────────────────────────
+// ✅ GLOBAL MONGO CACHE (NO RECONNECTS)
+// ─────────────────────────────────────────────
+declare global {
+  // eslint-disable-next-line no-var
+  var _mongoClientPromise: Promise<MongoClient> | undefined
+}
+
+let clientPromise: Promise<MongoClient>
+
+if (!global._mongoClientPromise) {
+  const client = new MongoClient(MONGODB_URI)
+  global._mongoClientPromise = client.connect()
+}
+
+clientPromise = global._mongoClientPromise!
+
+// ─────────────────────────────────────────────
+// ✅ AUTH HELPER
+// ─────────────────────────────────────────────
 async function getAuthUser() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('auth-token')?.value;
+  const cookieStore = await cookies()
+  const token = cookieStore.get('auth-token')?.value
 
-  if (!token) {
-    return null;
-  }
+  if (!token) return null
 
   try {
-    const decoded: any = jwt.verify(token, JWT_SECRET);
-    return decoded;
-  } catch (error) {
-    return null;
+    return jwt.verify(token, JWT_SECRET) as {
+      email: string
+      userId?: string
+    }
+  } catch {
+    return null
   }
 }
 
+// ─────────────────────────────────────────────
+// GET: FETCH PROGRESS + QUIZ
+// ─────────────────────────────────────────────
 export async function GET() {
-  if (!MONGODB_URI) {
-    return Response.json(
-      { error: 'MongoDB URI not configured' },
-      { status: 500 }
-    );
-  }
-
-  const authUser = await getAuthUser();
-  if (!authUser) {
-    return Response.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    );
-  }
-
   try {
-    const client = new MongoClient(MONGODB_URI);
-    await client.connect();
-
-    try {
-      const db = client.db('react-learning');
-      const progressCollection = db.collection('user_progress');
-
-      // Get user progress
-      const progress = await progressCollection
-        .find({ email: authUser.email })
-        .toArray();
-
+    if (!MONGODB_URI) {
       return Response.json(
-        { progress },
-        { status: 200 }
-      );
-    } finally {
-      await client.close();
+        { error: 'MongoDB URI not configured' },
+        { status: 500 }
+      )
     }
+
+    const authUser = await getAuthUser()
+
+    if (!authUser) {
+      return Response.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    const client = await clientPromise
+    const db = client.db('react-learning')
+
+    const progressCollection = db.collection('user_progress')
+    const quizCollection = db.collection('quiz_attempts')
+
+    // ✅ Fetch in parallel (faster)
+    const [progress, quizAttempts] = await Promise.all([
+      progressCollection
+        .find({ email: authUser.email })
+        .toArray(),
+
+      quizCollection
+        .find({ email: authUser.email })
+        .toArray(),
+    ])
+
+    // ✅ Normalize data (VERY IMPORTANT)
+    const safeProgress = (progress || []).map((p) => ({
+      lessonId: p.lessonId,
+      completed: p.completed ?? false,
+      completedAt: p.completedAt ?? null,
+      attempts: p.attempts ?? 0,
+      timeSpent: p.timeSpent ?? 0,
+    }))
+
+    const safeQuizAttempts = (quizAttempts || []).map((q) => ({
+      quizId: q.quizId,
+      score: q.score ?? 0,
+      totalQuestions: q.totalQuestions ?? 0,
+      passed: q.passed ?? false,
+      attemptedAt: q.attemptedAt ?? null,
+    }))
+
+    return Response.json(
+      {
+        progress: safeProgress,
+        quizAttempts: safeQuizAttempts,
+      },
+      { status: 200 }
+    )
   } catch (error) {
-    console.error('Progress fetch error:', error);
+    console.error('GET progress error:', error)
+
     return Response.json(
       { error: 'Failed to fetch progress' },
       { status: 500 }
-    );
+    )
   }
 }
 
+// ─────────────────────────────────────────────
+// POST: UPDATE LESSON PROGRESS
+// ─────────────────────────────────────────────
 export async function POST(request: Request) {
-  if (!MONGODB_URI) {
-    return Response.json(
-      { error: 'MongoDB URI not configured' },
-      { status: 500 }
-    );
-  }
-
-  const authUser = await getAuthUser();
-  if (!authUser) {
-    return Response.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    );
-  }
-
   try {
-    const { lessonId, completed, timeSpent } = await request.json();
+    if (!MONGODB_URI) {
+      return Response.json(
+        { error: 'MongoDB URI not configured' },
+        { status: 500 }
+      )
+    }
+
+    const authUser = await getAuthUser()
+
+    if (!authUser) {
+      return Response.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    const body = await request.json()
+
+    const lessonId: string = body.lessonId
+    const completed: boolean = body.completed ?? false
+    const timeSpent: number = body.timeSpent ?? 0
 
     if (!lessonId) {
       return Response.json(
         { error: 'lessonId is required' },
         { status: 400 }
-      );
+      )
     }
 
-    const client = new MongoClient(MONGODB_URI);
-    await client.connect();
+    const client = await clientPromise
+    const db = client.db('react-learning')
 
-    try {
-      const db = client.db('react-learning');
-      const progressCollection = db.collection('user_progress');
+    const progressCollection = db.collection('user_progress')
 
-      // Update or create progress record
-      const result = await progressCollection.updateOne(
-        { email: authUser.email, lessonId },
-        {
-          $set: {
-            completed: completed || false,
-            completedAt: completed ? new Date() : null,
-            timeSpent: timeSpent || 0,
-            updatedAt: new Date(),
-          },
-          $inc: { attempts: 1 },
-          $setOnInsert: {
-            email: authUser.email,
-            lessonId,
-            createdAt: new Date(),
-          },
+    const result = await progressCollection.updateOne(
+      { email: authUser.email, lessonId },
+      {
+        $set: {
+          completed,
+          completedAt: completed ? new Date() : null,
+          timeSpent,
+          updatedAt: new Date(),
         },
-        { upsert: true }
-      );
+        $inc: { attempts: 1 },
+        $setOnInsert: {
+          email: authUser.email,
+          lessonId,
+          createdAt: new Date(),
+        },
+      },
+      { upsert: true }
+    )
 
-      return Response.json(
-        { success: true, result },
-        { status: 200 }
-      );
-    } finally {
-      await client.close();
-    }
+    return Response.json(
+      {
+        success: true,
+        result,
+      },
+      { status: 200 }
+    )
   } catch (error) {
-    console.error('Progress update error:', error);
+    console.error('POST progress error:', error)
+
     return Response.json(
       { error: 'Failed to update progress' },
       { status: 500 }
-    );
+    )
+  }
+}
+
+// ─────────────────────────────────────────────
+// OPTIONAL: POST QUIZ ATTEMPT
+// (future-ready)
+// ─────────────────────────────────────────────
+export async function PUT(request: Request) {
+  try {
+    const authUser = await getAuthUser()
+
+    if (!authUser) {
+      return Response.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    const body = await request.json()
+
+    const { quizId, score, totalQuestions, passed } = body
+
+    if (!quizId) {
+      return Response.json(
+        { error: 'quizId is required' },
+        { status: 400 }
+      )
+    }
+
+    const client = await clientPromise
+    const db = client.db('react-learning')
+
+    const quizCollection = db.collection('quiz_attempts')
+
+    await quizCollection.insertOne({
+      email: authUser.email,
+      quizId,
+      score: score ?? 0,
+      totalQuestions: totalQuestions ?? 0,
+      passed: passed ?? false,
+      attemptedAt: new Date(),
+    })
+
+    return Response.json({ success: true }, { status: 200 })
+  } catch (error) {
+    console.error('PUT quiz error:', error)
+
+    return Response.json(
+      { error: 'Failed to save quiz attempt' },
+      { status: 500 }
+    )
   }
 }

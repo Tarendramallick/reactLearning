@@ -8,8 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Navbar } from '@/components/Navbar';
-import { LessonContent } from '@/components/LessonContent';
-import { QuizComponent } from '@/components/QuizComponent';
 
 interface Lesson {
   _id: string;
@@ -18,11 +16,7 @@ interface Lesson {
   content: string;
   estimatedTime: number;
   videoUrl?: string;
-  resources: Array<{
-    title: string;
-    url: string;
-    type: string;
-  }>;
+  resources: Array<{ title: string; url: string; type: string }>;
   keyPoints: string[];
 }
 
@@ -49,49 +43,71 @@ export default function LessonPage() {
   const { isAuthenticated } = useAuthStore();
   const { setLessonProgress, setQuizAttempt } = useProgressStore();
 
-  const [lesson, setLesson] = useState<Lesson | null>(null);
-  const [quiz, setQuiz] = useState<Quiz | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'content' | 'resources' | 'quiz'>('content');
+  const [lesson, setLesson]           = useState<Lesson | null>(null);
+  const [quiz, setQuiz]               = useState<Quiz | null>(null);
+  const [lessonLoading, setLessonLoading] = useState(true);
+  const [quizLoading, setQuizLoading] = useState(false);  // quiz loads on tab click
+  const [quizFetched, setQuizFetched] = useState(false);
+
+  const [activeTab, setActiveTab]     = useState<'content' | 'resources' | 'quiz'>('content');
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
-  const [quizScore, setQuizScore] = useState(0);
+  const [quizScore, setQuizScore]     = useState(0);
 
+  /* ── CRITICAL FIX: fetch only this lesson by ID, not ALL lessons ── */
   useEffect(() => {
     if (!isAuthenticated) {
       router.push('/login');
       return;
     }
 
-    const fetchData = async () => {
+    const fetchLesson = async () => {
       try {
-        // Fetch lesson
-        const lessonsRes = await fetch('/api/lessons');
-        if (lessonsRes.ok) {
-          const data = await lessonsRes.json();
-          const foundLesson = data.lessons.find((l: any) => l._id === lessonId);
-          if (foundLesson) {
-            setLesson(foundLesson);
-          }
-        }
-
-        // Fetch quizzes
-        const quizzesRes = await fetch(`/api/quizzes?lessonTitle=${encodeURIComponent(lesson?.title || '')}`);
-        if (quizzesRes.ok) {
-          const data = await quizzesRes.json();
-          if (data.quizzes.length > 0) {
-            setQuiz(data.quizzes[0]);
+        // Pass lessonId so the server returns only the one lesson
+        const res = await fetch(`/api/lessons/${lessonId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setLesson(data.lesson);
+        } else {
+          // Fallback: if the API doesn't support /api/lessons/:id yet,
+          // fall back to the list endpoint and filter client-side
+          const fallback = await fetch('/api/lessons');
+          if (fallback.ok) {
+            const data = await fallback.json();
+            const found = data.lessons?.find((l: any) => l._id === lessonId);
+            if (found) setLesson(found);
           }
         }
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('Error fetching lesson:', error);
       } finally {
-        setLoading(false);
+        setLessonLoading(false);
       }
     };
 
-    fetchData();
-  }, [router, lessonId, lesson?.title, isAuthenticated]);
+    fetchLesson();
+  }, [router, lessonId, isAuthenticated]);
+
+  /* ── Fetch quiz ONLY when the quiz tab is opened ── */
+  const handleTabChange = async (tab: 'content' | 'resources' | 'quiz') => {
+    setActiveTab(tab);
+
+    if (tab === 'quiz' && !quizFetched) {
+      setQuizLoading(true);
+      setQuizFetched(true);
+      try {
+        const res = await fetch(`/api/quizzes?lessonId=${encodeURIComponent(lessonId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.quizzes?.length > 0) setQuiz(data.quizzes[0]);
+        }
+      } catch (error) {
+        console.error('Error fetching quiz:', error);
+      } finally {
+        setQuizLoading(false);
+      }
+    }
+  };
 
   const handleQuizSubmit = async () => {
     if (!quiz || !lesson) return;
@@ -102,9 +118,9 @@ export default function LessonPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           quizId: quiz._id,
-          answers: Object.entries(quizAnswers).map(([questionId, answer]) => ({
-            questionId,
-            selectedAnswer: answer,
+          answers: quiz.questions.map((question, qIdx) => ({
+            questionId: question._id,
+            selectedAnswer: quizAnswers[qIdx],
           })),
         }),
       });
@@ -114,7 +130,6 @@ export default function LessonPage() {
         setQuizScore(result.percentage);
         setQuizSubmitted(true);
 
-        // Update Zustand stores
         setQuizAttempt(quiz._id, {
           quizId: quiz._id,
           score: result.percentage,
@@ -123,8 +138,8 @@ export default function LessonPage() {
           attemptedAt: new Date(),
         });
 
-        // Update progress
-        await fetch('/api/progress', {
+        // Fire-and-forget progress update (don't block the UI)
+        fetch('/api/progress', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -132,7 +147,7 @@ export default function LessonPage() {
             completed: result.passed,
             timeSpent: Math.round(Math.random() * 30) + 10,
           }),
-        });
+        }).catch(console.error);
 
         setLessonProgress(lessonId, {
           lessonId,
@@ -147,7 +162,7 @@ export default function LessonPage() {
     }
   };
 
-  if (loading || !lesson) {
+  if (lessonLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
         <div className="text-center">
@@ -158,12 +173,23 @@ export default function LessonPage() {
     );
   }
 
+  if (!lesson) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+        <div className="text-center">
+          <p className="text-slate-300 text-lg">Lesson not found.</p>
+          <Button className="mt-4" onClick={() => router.push('/courses')}>Back to Courses</Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <Navbar />
 
-      {/* Main Content */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
         {/* Lesson Header */}
         <Card className="bg-slate-800/50 border-slate-700 mb-8">
           <CardHeader>
@@ -176,15 +202,9 @@ export default function LessonPage() {
               </div>
             </div>
             <div className="flex gap-4 mt-4">
-              <Badge variant="outline" className="border-slate-600">
-                ⏱ {lesson.estimatedTime} minutes
-              </Badge>
-              <Badge variant="outline" className="border-slate-600">
-                📚 {lesson.keyPoints?.length || 0} Key Points
-              </Badge>
-              <Badge variant="outline" className="border-slate-600">
-                🔗 {lesson.resources?.length || 0} Resources
-              </Badge>
+              <Badge variant="outline" className="border-slate-600">⏱ {lesson.estimatedTime} minutes</Badge>
+              <Badge variant="outline" className="border-slate-600">📚 {lesson.keyPoints?.length || 0} Key Points</Badge>
+              <Badge variant="outline" className="border-slate-600">🔗 {lesson.resources?.length || 0} Resources</Badge>
             </div>
           </CardHeader>
         </Card>
@@ -194,7 +214,7 @@ export default function LessonPage() {
           {(['content', 'resources', 'quiz'] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => handleTabChange(tab)}
               className={`px-4 py-2 font-semibold border-b-2 transition ${
                 activeTab === tab
                   ? 'border-purple-500 text-purple-300'
@@ -217,37 +237,30 @@ export default function LessonPage() {
                 <CardContent>
                   <div className="aspect-video bg-black rounded-lg overflow-hidden">
                     <iframe
-                      width="100%"
-                      height="100%"
+                      width="100%" height="100%"
                       src={lesson.videoUrl}
                       title="Video lesson"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
-                    ></iframe>
+                    />
                   </div>
                 </CardContent>
               </Card>
             )}
 
             <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader>
-                <CardTitle className="text-white">Lesson Content</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-white">Lesson Content</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-slate-300 prose prose-invert max-w-none">
                   {lesson.content.split('\n').map((paragraph, idx) => (
-                    <p key={idx} className="mb-4">
-                      {paragraph}
-                    </p>
+                    <p key={idx} className="mb-4">{paragraph}</p>
                   ))}
                 </div>
               </CardContent>
             </Card>
 
             <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader>
-                <CardTitle className="text-white">Key Points</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-white">Key Points</CardTitle></CardHeader>
               <CardContent>
                 <ul className="space-y-2">
                   {lesson.keyPoints?.map((point, idx) => (
@@ -265,9 +278,7 @@ export default function LessonPage() {
         {/* Resources Tab */}
         {activeTab === 'resources' && (
           <Card className="bg-slate-800/50 border-slate-700">
-            <CardHeader>
-              <CardTitle className="text-white">Learning Resources</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-white">Learning Resources</CardTitle></CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {lesson.resources?.map((resource, idx) => (
@@ -293,10 +304,29 @@ export default function LessonPage() {
         )}
 
         {/* Quiz Tab */}
-        {activeTab === 'quiz' && quiz && (
-          <div className="space-y-6">
-            {!quizSubmitted ? (
-              <>
+        {activeTab === 'quiz' && (
+          <>
+            {quizLoading && (
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardContent className="pt-6 flex justify-center">
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"/>
+                    <p className="mt-3 text-slate-400 text-sm">Loading quiz...</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {!quizLoading && !quiz && (
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardContent className="pt-6">
+                  <p className="text-slate-300">No quiz available for this lesson yet.</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {!quizLoading && quiz && !quizSubmitted && (
+              <div className="space-y-6">
                 <Card className="bg-slate-800/50 border-slate-700">
                   <CardHeader>
                     <CardTitle className="text-white">{quiz.title}</CardTitle>
@@ -307,29 +337,26 @@ export default function LessonPage() {
                 </Card>
 
                 {quiz.questions.map((question, qIdx) => (
-                  <Card key={question._id} className="bg-slate-800/50 border-slate-700">
+                  <Card key={`question-${qIdx}`} className="bg-slate-800/50 border-slate-700">
                     <CardContent className="pt-6">
-                      <p className="text-white font-semibold mb-4">{qIdx + 1}. {question.question}</p>
+                      <p className="text-white font-semibold mb-4">
+                        {qIdx + 1}. {question.question}
+                      </p>
                       <div className="space-y-2">
                         {question.options.map((option, oIdx) => (
                           <label
-                            key={oIdx}
+                            key={`q${qIdx}-o${oIdx}`}
                             className={`flex items-center p-3 rounded-lg cursor-pointer transition ${
-                              quizAnswers[question._id] === oIdx
+                              quizAnswers[qIdx] === oIdx
                                 ? 'bg-purple-500/30 border border-purple-500'
                                 : 'bg-slate-700/30 border border-slate-600 hover:bg-slate-700/50'
                             }`}
                           >
                             <input
                               type="radio"
-                              name={`question-${question._id}`}
-                              checked={quizAnswers[question._id] === oIdx}
-                              onChange={() =>
-                                setQuizAnswers({
-                                  ...quizAnswers,
-                                  [question._id]: oIdx,
-                                })
-                              }
+                              name={`question-group-${qIdx}`}
+                              checked={quizAnswers[qIdx] === oIdx}
+                              onChange={() => setQuizAnswers({ ...quizAnswers, [qIdx]: oIdx })}
                               className="mr-3"
                             />
                             <span className="text-slate-300">{option}</span>
@@ -348,24 +375,24 @@ export default function LessonPage() {
                 >
                   Submit Quiz
                 </Button>
-              </>
-            ) : (
+              </div>
+            )}
+
+            {!quizLoading && quiz && quizSubmitted && (
               <Card className="bg-slate-800/50 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="text-white">Quiz Results</CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="text-white">Quiz Results</CardTitle></CardHeader>
                 <CardContent>
                   <div className="text-center py-8">
-                    <div className="text-6xl font-bold text-purple-400 mb-4">
-                      {quizScore}%
-                    </div>
+                    <div className="text-6xl font-bold text-purple-400 mb-4">{quizScore}%</div>
                     <p className="text-white text-xl mb-6">
                       {quizScore >= quiz.passingScore
                         ? 'Congratulations! You passed!'
                         : 'Try again to improve your score.'}
                     </p>
                     <div className="flex gap-4 justify-center">
-                      <Button onClick={() => setQuizSubmitted(false)}>Retake Quiz</Button>
+                      <Button onClick={() => { setQuizSubmitted(false); setQuizAnswers({}); }}>
+                        Retake Quiz
+                      </Button>
                       <Button variant="outline" onClick={() => router.push('/courses')}>
                         Back to Courses
                       </Button>
@@ -374,15 +401,7 @@ export default function LessonPage() {
                 </CardContent>
               </Card>
             )}
-          </div>
-        )}
-
-        {!quiz && activeTab === 'quiz' && (
-          <Card className="bg-slate-800/50 border-slate-700">
-            <CardContent className="pt-6">
-              <p className="text-slate-300">No quiz available for this lesson yet.</p>
-            </CardContent>
-          </Card>
+          </>
         )}
       </div>
     </div>

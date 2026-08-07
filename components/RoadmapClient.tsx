@@ -93,32 +93,6 @@ const bigIcons: Record<string, ReactElement> = {
 /* ─────────────────────────────────────────────
    SUB-COMPONENTS
 ───────────────────────────────────────────── */
-function InlineSpinner({ color }: { color: string }) {
-  const r = 10, circ = 2 * Math.PI * r;
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" style={{ animation: "spin 1.4s linear infinite" }}>
-      <circle cx="14" cy="14" r={r} fill="none" stroke="#1e2d4a" strokeWidth="3"/>
-      <circle cx="14" cy="14" r={r} fill="none" stroke={color} strokeWidth="3"
-        strokeLinecap="round" strokeDasharray={`${circ * 0.6} ${circ * 0.4}`}
-        strokeDashoffset={circ * 0.25}
-      />
-    </svg>
-  );
-}
-
-function LessonCardSkeleton() {
-  return (
-    <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-5 animate-pulse">
-      <div className="h-4 bg-slate-700 rounded w-2/5 mb-2"/>
-      <div className="h-3 bg-slate-700/60 rounded w-3/5 mb-4"/>
-      <div className="grid grid-cols-4 gap-3 mb-3">
-        {[...Array(4)].map((_, j) => <div key={j} className="h-8 bg-slate-700/50 rounded"/>)}
-      </div>
-      <div className="h-9 bg-slate-700/50 rounded-lg"/>
-    </div>
-  );
-}
-
 function LessonCard({
   lesson,
   isCompleted,
@@ -308,7 +282,6 @@ export default function RoadmapClient({ initialLessons }: { initialLessons: Less
             <div className="flex flex-col gap-3">
               {visibleModules.map((m, idx) => {
                 const isExpanded  = expandedId === m.id;
-                const isLocked    = false;
                 const isDone      = m.status === 'completed';
                 const inProgress  = m.status === 'progress';
                 const isAvailable = m.status === 'available';
@@ -339,16 +312,14 @@ export default function RoadmapClient({ initialLessons }: { initialLessons: Less
 
                       {/* HEADER */}
                       <button
-                        onClick={() => !isLocked && toggle(m.id)}
+                        onClick={() => toggle(m.id)}
                         className={`flex-1 flex items-center gap-4 px-5 py-4 rounded-2xl border text-left transition-all
                           ${isExpanded
                             ? "bg-[#0f1f3a] border-blue-500/60 shadow-lg shadow-blue-900/20 rounded-b-none border-b-0"
-                            : isLocked
-                            ? "bg-[#0a1020] border-white/[0.06] opacity-60 cursor-not-allowed"
                             : "bg-[#0b1120] border-white/10 hover:border-white/20 cursor-pointer"
                           }`}
                       >
-                        <div className={`w-[56px] h-[56px] rounded-xl flex items-center justify-center flex-shrink-0 ${isLocked ? "bg-[#131c2e]" : "bg-[#0f1f3a]"}`}>
+                        <div className="w-[56px] h-[56px] rounded-xl flex items-center justify-center flex-shrink-0 bg-[#0f1f3a]">
                           {m.icon
                             ? bigIcons[m.icon]
                             : (
@@ -360,23 +331,21 @@ export default function RoadmapClient({ initialLessons }: { initialLessons: Less
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h3 className={`font-bold text-base mb-0.5 ${isLocked ? "text-gray-400" : "text-white"}`}>
+                          <h3 className="font-bold text-base mb-0.5 text-white">
                             {m.id}.&nbsp;{m.title}
                           </h3>
                           <p className="text-gray-500 text-[13px] leading-snug line-clamp-2">{m.desc}</p>
                         </div>
 
                         <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-2">
-                          <p className={`text-sm font-bold ${isLocked ? "text-gray-500" : isDone ? "text-emerald-400" : inProgress ? "text-blue-400" : "text-violet-400"}`}>
+                          <p className={`text-sm font-bold ${isDone ? "text-emerald-400" : inProgress ? "text-blue-400" : "text-violet-400"}`}>
                             {m.done} / {m.total}
                           </p>
-                          <p className={`text-xs font-semibold ${isLocked ? "text-gray-500" : isDone ? "text-emerald-400" : inProgress ? "text-blue-400" : "text-violet-400"}`}>
-                            {isDone ? "Completed" : inProgress ? "In Progress" : isAvailable ? "Start Now" : "Locked"}
+                          <p className={`text-xs font-semibold ${isDone ? "text-emerald-400" : inProgress ? "text-blue-400" : "text-violet-400"}`}>
+                            {isDone ? "Completed" : inProgress ? "In Progress" : "Start Now"}
                           </p>
                           <div className="mt-1">
-                            {inProgress && !isExpanded
-                              ? <InlineSpinner color="#3b82f6"/>
-                              : isExpanded
+                            {isExpanded
                               ? <ChevronUp size={18} className={isDone ? "text-gray-400" : inProgress ? "text-blue-400" : "text-violet-400"}/>
                               : <ChevronDown size={18} className={isDone ? "text-gray-400" : "text-violet-400"}/>
                             }

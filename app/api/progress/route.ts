@@ -1,5 +1,5 @@
-import { MongoClient } from 'mongodb'
 import jwt from 'jsonwebtoken'
+import { connectToDatabase } from '@/lib/mongodb'
 import { cookies } from 'next/headers'
 
 // ─────────────────────────────────────────────
@@ -9,22 +9,7 @@ const MONGODB_URI = process.env.MONGODB_URI!
 const JWT_SECRET =
   process.env.JWT_SECRET || 'your-secret-key-change-in-production'
 
-// ─────────────────────────────────────────────
-// ✅ GLOBAL MONGO CACHE (NO RECONNECTS)
-// ─────────────────────────────────────────────
-declare global {
-  // eslint-disable-next-line no-var
-  var _mongoClientPromise: Promise<MongoClient> | undefined
-}
-
-let clientPromise: Promise<MongoClient>
-
-if (!global._mongoClientPromise) {
-  const client = new MongoClient(MONGODB_URI)
-  global._mongoClientPromise = client.connect()
-}
-
-clientPromise = global._mongoClientPromise!
+const getClient = async () => (await connectToDatabase()).client;
 
 // ─────────────────────────────────────────────
 // ✅ AUTH HELPER
@@ -66,7 +51,7 @@ export async function GET() {
       )
     }
 
-    const client = await clientPromise
+    const client = await getClient()
     const db = client.db('react-learning')
 
     const progressCollection = db.collection('user_progress')
@@ -151,7 +136,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const client = await clientPromise
+    const client = await getClient()
     const db = client.db('react-learning')
 
     const progressCollection = db.collection('user_progress')
@@ -218,7 +203,7 @@ export async function PUT(request: Request) {
       )
     }
 
-    const client = await clientPromise
+    const client = await getClient()
     const db = client.db('react-learning')
 
     const quizCollection = db.collection('quiz_attempts')
